@@ -370,138 +370,158 @@ summary {
 </div>
 
 
-<div id="preprocessing" class="section level1">
-<h1>Preprocessing</h1>
-<p>Initial observations identify NA values in the data. First, we observe the distribution of NA values across columns (variables).</p>
+<div id="preprocessing-and-cleaning" class="section level1">
+<h1>Preprocessing and Cleaning</h1>
 <pre class="r"><code>library(caret)</code></pre>
 <pre><code>## Loading required package: lattice</code></pre>
 <pre><code>## Loading required package: ggplot2</code></pre>
 <pre class="r"><code>training &lt;- read.csv(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;)
 testing &lt;- read.csv(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;)
-dim(training)</code></pre>
+dim(training); dim(testing)</code></pre>
 <pre><code>## [1] 19622   160</code></pre>
-<pre class="r"><code>nas &lt;- is.na(training)
-colSums(nas)[16:20]</code></pre>
-<pre><code>## skewness_roll_belt.1    skewness_yaw_belt        max_roll_belt 
-##                    0                    0                19216 
-##       max_picth_belt         max_yaw_belt 
-##                19216                    0</code></pre>
-<pre class="r"><code>sum(colSums(nas) == 0 | colSums(nas) == 19216)</code></pre>
-<pre><code>## [1] 160</code></pre>
-<p>We can see that all 160 variables either have 0 or 19216 NAs out of 19622 total observations (only a subset of the variable NA sums are shown). Now, we will look at the variation of NA values across rows (observations).</p>
-<pre class="r"><code>colInTrain &lt;- as.logical(colSums(nas) == 0)
-head(colInTrain, 20)</code></pre>
-<pre><code>##  [1]  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE
-## [12]  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE FALSE FALSE  TRUE</code></pre>
-<pre class="r"><code>n.NACols &lt;- sum(!colInTrain)
-sum(rowSums(nas) == 0 | rowSums(nas) == n.NACols)</code></pre>
-<pre><code>## [1] 19622</code></pre>
-<p>Analysis shows that for each observation, we either see all 67 NA values, or none at all. Does the absence of these particular NA values correspond to a particular <code>classe</code> value?</p>
-<pre class="r"><code>rowInTrain &lt;- as.logical(rowSums(nas) == n.NACols)
-NAClasses &lt;- training$classe[!rowInTrain]
-length(NAClasses)</code></pre>
-<pre><code>## [1] 406</code></pre>
-<pre class="r"><code>summary(NAClasses)</code></pre>
-<pre><code>##   A   B   C   D   E 
-## 109  79  70  69  79</code></pre>
-<p>These NA values do not appear to correspond to any particular activity type. We will therefore omit these 406 observations from our data, and remove the columns filled with NA values.</p>
-<pre class="r"><code>names &lt;- names(training)
-training &lt;- training[rowInTrain, colInTrain]
-names &lt;- names[colInTrain]
-names(training) &lt;- names
-dim(training)</code></pre>
-<pre><code>## [1] 19216    93</code></pre>
-<p>We have now reduced our dataset to 93 observations of 19216 variables.</p>
-<p>However, not all of the test data variables are formatted in the same manner as the training data. We will remove any variables that are not of the same class across both sets.</p>
-<pre class="r"><code># Gather the same columns selected in the training set
-testing &lt;- testing[, colInTrain]
-test.nas &lt;- is.na(testing)
-summary(rowSums(test.nas))</code></pre>
+<pre><code>## [1]  20 160</code></pre>
+<pre class="r"><code>summary(colSums(is.na(training)))</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-##      33      33      33      33      33      33</code></pre>
-<pre class="r"><code>colInTest &lt;- colSums(test.nas) == 0
-# Remove from both sets any columns in the test set with NA values
-testing &lt;- testing[, colInTest]
-training &lt;- training[, colInTest]
-# Remove any columns whose class does not match across data sets, except for the
-# &quot;problem_id&quot; column
-keepCols &lt;- sapply(training, class) == sapply(testing, class)
-keepCols[which(names(testing) == &quot;problem_id&quot;)] &lt;- TRUE
-training &lt;- training[,keepCols]
-testing &lt;- testing[,keepCols]</code></pre>
-<p>The final step before analysis is to create a validation set for testing our model.</p>
+##       0       0       0    8047   19216   19216</code></pre>
+<pre class="r"><code>summary(colSums(is.na(testing)))</code></pre>
+<pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##     0.0     0.0    20.0    12.5    20.0    20.0</code></pre>
+<p>Initial observations of the datasets indicate a lot of variables with NA values. We will remove all of the columns containing NA values. Furthermore, some of the column classes in the training set do not match those in the test set. We will remove those columns as well, with the exception of the test set’s “problem_id” column. In addition to removing these variables, the variables with near-zero variation will be removed. The first five columns are labels that would not be expected to have any correlation to the data collected, so they will also be removed.</p>
+<pre class="r"><code>colToRemove &lt;- (colSums(is.na(training)) != 0 | colSums(is.na(testing) != 0))
+colToRemove &lt;- !(sapply(training, class) == sapply(testing, class))
+colToRemove[which(names(testing) == &quot;problem_id&quot;)] &lt;- FALSE
+colToRemove[nearZeroVar(training)] &lt;- TRUE
+colToRemove[1:5] &lt;- TRUE
+names_train &lt;- names(training)[!colToRemove]
+names_test &lt;- names(testing)[!colToRemove]
+training &lt;- training[!colToRemove]
+testing &lt;- testing[!colToRemove]
+names(training) &lt;- names_train
+names(testing) &lt;- names_test
+dim(training); dim(testing)</code></pre>
+<pre><code>## [1] 19622    51</code></pre>
+<pre><code>## [1] 20 51</code></pre>
+<p>The data in both sets has been reduced to 51 dimensions from the original 160.</p>
 </div>
-<div id="developing-an-prediction-model" class="section level1">
-<h1>Developing an Prediction Model</h1>
-<p>We will now create a function which produces cross validation groups within our training set.</p>
-<pre class="r"><code>cv.split &lt;- function(trainSet, nTrain){
-        inTrain &lt;- createDataPartition(y = trainSet$classe, 
-                                       p = nTrain/dim(training)[1], list = FALSE)
-        train &lt;- trainSet[inTrain,]
-        test &lt;- trainSet[-inTrain,]
-        list(train, test)
-}</code></pre>
-<p>From here, we can iteratively repeat the process of cross-validating and model fitting, and store the best fitting model.</p>
-<p>We will try 10 iterations of a random forest, using a training set of 300 and a maximum of 10 trees per parameter.</p>
+<div id="prediction-model-development" class="section level1">
+<h1>Prediction Model Development</h1>
+<p>Before creating any prediction models, the training data will be subsetted into training and validation sets.</p>
+<pre class="r"><code>inValid &lt;- createDataPartition(y = training$classe, p = 0.2, list = FALSE)
+sub_train &lt;- training[-inValid, ]
+sub_valid &lt;- training[inValid, ]</code></pre>
+<div id="random-forest" class="section level3">
+<h3>Random Forest</h3>
+<p>The random forest model will be run on the subsetted training data. The number of trees is limited to 50 to reduce runtime.</p>
 <pre class="r"><code>set.seed(2000)
-fit_rf &lt;- function(trainSet, nInTrain, nTree, nRep){
-        models &lt;- list()
-        accuracies &lt;- numeric()
-        for(i in 1:nRep){
-                new.data &lt;- cv.split(trainSet, nInTrain)
-                model_rf &lt;- train(classe ~ ., data = new.data[[1]], 
-                                  method = &quot;rf&quot;, ntree = nTree)
-                models[[i]] &lt;- model_rf
-                pred_rf &lt;- predict(model_rf, new.data[[2]])
-                accuracies[i] &lt;- sum(pred_rf == new.data[[2]]$classe)/length(new.data[[2]]$classe)
-        }
-        list(models, accuracies)
-}
-
-data &lt;- fit_rf(training, 500, 20, 30)
-# The best accuracy across the 20 models was:
-index &lt;- which.max(data[[2]])
-data[[2]][index]</code></pre>
-<pre><code>## [1] 0.999144</code></pre>
-<p>The prediction model was 99.93% accurate across the test subset within the training set.</p>
-<pre class="r"><code>mod_rf_best &lt;- data[[1]][[index]]
-mod_rf_best$finalModel</code></pre>
+mod_rf &lt;- train(classe ~ ., method = &quot;rf&quot;, data = sub_train, ntree = 50,
+                trControl = trainControl(method = &quot;cv&quot;, number = 3))
+mod_rf$finalModel</code></pre>
 <pre><code>## 
 ## Call:
-##  randomForest(x = x, y = y, ntree = ..1, mtry = param$mtry) 
+##  randomForest(x = x, y = y, ntree = 50, mtry = param$mtry) 
 ##                Type of random forest: classification
-##                      Number of trees: 20
-## No. of variables tried at each split: 40
+##                      Number of trees: 50
+## No. of variables tried at each split: 26
 ## 
-##         OOB estimate of  error rate: 0.6%
+##         OOB estimate of  error rate: 0.28%
 ## Confusion matrix:
-##     A  B  C  D  E class.error
-## A 143  0  0  0  0  0.00000000
-## B   0 96  1  0  0  0.01030928
-## C   0  1 87  0  0  0.01136364
-## D   0  0  1 81  0  0.01219512
-## E   0  0  0  0 92  0.00000000</code></pre>
-<p>We now have a model that we can use to predict the class of activity that was being performed. The predicted out of sample error rate is 0.6%.</p>
+##      A    B    C    D    E  class.error
+## A 4463    1    0    0    0 0.0002240143
+## B    5 3028    3    1    0 0.0029634508
+## C    0    8 2728    1    0 0.0032882718
+## D    0    0   12 2559    1 0.0050544323
+## E    1    1    0   10 2873 0.0041594454</code></pre>
+<pre class="r"><code>pred_rf &lt;- predict(mod_rf, sub_valid)
+cm_rf &lt;- confusionMatrix(pred_rf, sub_valid$classe)
+cm_rf</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1115    2    0    0    0
+##          B    0  758    3    0    2
+##          C    0    0  682    3    0
+##          D    0    0    0  641    4
+##          E    1    0    0    0  716
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9962          
+##                  95% CI : (0.9937, 0.9979)
+##     No Information Rate : 0.2842          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9952          
+##                                           
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9991   0.9974   0.9956   0.9953   0.9917
+## Specificity            0.9993   0.9984   0.9991   0.9988   0.9997
+## Pos Pred Value         0.9982   0.9934   0.9956   0.9938   0.9986
+## Neg Pred Value         0.9996   0.9994   0.9991   0.9991   0.9981
+## Prevalence             0.2842   0.1935   0.1744   0.1640   0.1839
+## Detection Rate         0.2839   0.1930   0.1737   0.1632   0.1823
+## Detection Prevalence   0.2844   0.1943   0.1744   0.1642   0.1826
+## Balanced Accuracy      0.9992   0.9979   0.9973   0.9971   0.9957</code></pre>
+<p>Based on the cross-validation data, the random forest model has an expected out of sample errror rate of 0.23%.</p>
 </div>
-<div id="testing-our-prediction-model" class="section level1">
-<h1>Testing Our Prediction Model</h1>
-<div id="the-validation-set" class="section level3">
-<h3>The Validation Set</h3>
-<p>Now that we have our “best” model, we will test it on the validation set.</p>
-<pre class="r"><code>pred_rf &lt;- predict(mod_rf_best, validation)
-sum(pred_rf[[1]] == validation$classe)/length(validation$classe)</code></pre>
-<pre><code>## [1] 0.2727273</code></pre>
-<p>The prediction model correctly identified all 20 of the validation classes.</p>
+<div id="boosting" class="section level3">
+<h3>Boosting</h3>
+<p>The generalized boosted model will be run on the subsetted training data.</p>
+<pre class="r"><code>mod_gbm &lt;- train(classe ~ ., method = &quot;gbm&quot;, data = sub_train, verbose = FALSE,
+                 trControl = trainControl(method = &quot;cv&quot;, number = 3))
+mod_gbm$finalModel</code></pre>
+<pre><code>## A gradient boosted model with multinomial loss function.
+## 150 iterations were performed.
+## There were 50 predictors of which 50 had non-zero influence.</code></pre>
+<pre class="r"><code>pred_gbm &lt;- predict(mod_gbm, sub_valid)
+cm_gbm &lt;- confusionMatrix(pred_gbm, sub_valid$classe)
+cm_gbm</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1110   12    0    0    0
+##          B    5  735    9    0    3
+##          C    0   10  676    4    2
+##          D    1    3    0  638    7
+##          E    0    0    0    2  710
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9852          
+##                  95% CI : (0.9809, 0.9888)
+##     No Information Rate : 0.2842          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9813          
+##                                           
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9946   0.9671   0.9869   0.9907   0.9834
+## Specificity            0.9957   0.9946   0.9951   0.9966   0.9994
+## Pos Pred Value         0.9893   0.9774   0.9769   0.9831   0.9972
+## Neg Pred Value         0.9979   0.9921   0.9972   0.9982   0.9963
+## Prevalence             0.2842   0.1935   0.1744   0.1640   0.1839
+## Detection Rate         0.2827   0.1872   0.1721   0.1625   0.1808
+## Detection Prevalence   0.2857   0.1915   0.1762   0.1653   0.1813
+## Balanced Accuracy      0.9952   0.9809   0.9910   0.9937   0.9914</code></pre>
+<p>The boosted model has an expected out of sample error rate of 1.3%, which is slightly higher than the random forest model. We will use the random forest model on our test data.</p>
 </div>
-<div id="the-test-set" class="section level3">
-<h3>The Test Set</h3>
-<p>We will now apply our model to the test data.</p>
-<pre class="r"><code>pred_rf_test &lt;- predict(mod_rf_best, testing)
-pred_rf_test</code></pre>
-<pre><code>##  [1] A A A A A A A A A A A A A A A A A A A A
+</div>
+<div id="applying-our-model-to-the-test-set" class="section level1">
+<h1>Applying Our Model to the Test Set</h1>
+<pre class="r"><code>pred_final &lt;- predict(mod_rf, testing)
+pred_final</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
-<p>Our model predicts that the test data was all collected under theClass A: performing the workout exactly according to the specification.</p>
-</div>
+<p>This output represents our predicted activity classes for the test data.</p>
 </div>
 
 
