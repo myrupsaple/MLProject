@@ -1,0 +1,164 @@
+---
+title: "Machine Learning Course Project"
+author: "Riley Matsuda"
+date: "10/19/2019"
+output: html_document
+---
+# Preprocessing
+
+Initial observations identify NA values in the data. First, we observe the 
+distribution of NA values across columns (variables).
+
+```{r, echo = TRUE}
+library(caret)
+training <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testing <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+dim(training)
+nas <- is.na(training)
+colSums(nas)[16:20]
+sum(colSums(nas) == 0 | colSums(nas) == 19216)
+```
+
+We can see that all 160 variables either have 0 or 19216 NAs out of 19622
+total observations (only a subset of the variable NA sums are shown). Now, we
+will look at the variation of NA values across rows (observations).
+
+```{r, echo = TRUE}
+colInTrain <- as.logical(colSums(nas) == 0)
+head(colInTrain, 20)
+n.NACols <- sum(!colInTrain)
+sum(rowSums(nas) == 0 | rowSums(nas) == n.NACols)
+```
+
+Analysis shows that for each observation, we either see all `r n.NACols`
+NA values, or none at all. Does the absence of these particular NA values
+correspond to a particular `classe` value?
+
+```{r, echo = TRUE}
+rowInTrain <- as.logical(rowSums(nas) == n.NACols)
+NAClasses <- training$classe[!rowInTrain]
+length(NAClasses)
+summary(NAClasses)
+```
+
+These NA values do not appear to correspond to any particular activity type.
+We will therefore omit these `r length(NAClasses)` observations from our data,
+and remove the columns filled with NA values.
+
+```{r, echo = TRUE}
+names <- names(training)
+training <- training[rowInTrain, colInTrain]
+names <- names[colInTrain]
+names(training) <- names
+dim(training)
+```
+
+We have now reduced our dataset to `r dim(training)[2]` observations of 
+`r dim(training)[1]` variables.
+
+However, not all of the test data variables are formatted in the same manner as
+the training data. We will remove any variables that are not of the same class
+across both sets.
+
+```{r, echo = TRUE}
+# Gather the same columns selected in the training set
+testing <- testing[, colInTrain]
+test.nas <- is.na(testing)
+summary(rowSums(test.nas))
+colInTest <- colSums(test.nas) == 0
+# Remove from both sets any columns in the test set with NA values
+testing <- testing[, colInTest]
+training <- training[, colInTest]
+# Remove any columns whose class does not match across data sets, except for the
+# "problem_id" column
+keepCols <- sapply(training, class) == sapply(testing, class)
+keepCols[which(names(testing) == "problem_id")] <- TRUE
+training <- training[,keepCols]
+testing <- testing[,keepCols]
+```
+
+The final step before analysis is to create a validation set for testing our
+model.
+
+```{r, echo = FALSE}
+inValid <- createDataPartition(y = training$classe, p = 20/length(training$classe), list = FALSE)
+training <- training[-inValid,]
+validation <- training[inValid,]
+```
+
+# Developing an Prediction Model
+
+We will now create a function which produces cross validation groups within our
+training set.
+
+```{r, echo = TRUE}
+cv.split <- function(trainSet, nTrain){
+        inTrain <- createDataPartition(y = trainSet$classe, 
+                                       p = nTrain/dim(training)[1], list = FALSE)
+        train <- trainSet[inTrain,]
+        test <- trainSet[-inTrain,]
+        list(train, test)
+}
+```
+
+From here, we can iteratively repeat the process of cross-validating and model
+fitting, and store the best fitting model. 
+
+We will try 10 iterations of a random forest, using a training set of 300
+and a maximum of 10 trees per parameter.
+
+```{r, echo = TRUE}
+set.seed(2000)
+fit_rf <- function(trainSet, nInTrain, nTree, nRep){
+        models <- list()
+        accuracies <- numeric()
+        for(i in 1:nRep){
+                new.data <- cv.split(trainSet, nInTrain)
+                model_rf <- train(classe ~ ., data = new.data[[1]], 
+                                  method = "rf", ntree = nTree)
+                models[[i]] <- model_rf
+                pred_rf <- predict(model_rf, new.data[[2]])
+                accuracies[i] <- sum(pred_rf == new.data[[2]]$classe)/length(new.data[[2]]$classe)
+        }
+        list(models, accuracies)
+}
+
+data <- fit_rf(training, 500, 20, 30)
+# The best accuracy across the 20 models was:
+index <- which.max(data[[2]])
+data[[2]][index]
+```
+The prediction model was 99.93% accurate across the test subset within the
+training set.
+
+```{r, echo = TRUE}
+mod_rf_best <- data[[1]][[index]]
+mod_rf_best$finalModel
+```
+
+We now have a model that we can use to predict the class of activity that was
+being performed. The predicted out of sample error rate is 0.6%.
+
+# Testing Our Prediction Model
+### The Validation Set
+
+Now that we have our "best" model, we will test it on the validation set.
+
+``` {r, echo = TRUE}
+pred_rf <- predict(mod_rf_best, validation)
+sum(pred_rf[[1]] == validation$classe)/length(validation$classe)
+```
+
+The prediction model correctly identified all 20 of the validation classes. 
+
+### The Test Set
+
+We will now apply our model to the test data.
+
+``` {r, echo = TRUE}
+pred_rf_test <- predict(mod_rf_best, testing)
+pred_rf_test
+```
+
+Our model predicts that the test data was all collected under theClass A: 
+performing the workout exactly according to the specification.
